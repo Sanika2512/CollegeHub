@@ -6,3 +6,4 @@ dist
 coverage
 *.tsbuildinfo
 prisma/dev.db
+public/uploads/
