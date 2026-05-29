@@ -1,5 +1,8 @@
 # CollegeHub - College Discovery Platform MVP
 
+## Live Demo
+https://collegehub-vlzc.onrender.com/
+
 Production-grade MVP for discovering, saving, reviewing, and comparing Indian colleges.
 
 ## Stack
