@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  name          String?
+  email         String         @unique
+  password      String?
+  image         String?
+  savedColleges SavedCollege[]
+  reviews       Review[]
+  questions     Question[]
+  answers       Answer[]
+  answerVotes   AnswerVote[]
+  notifications Notification[]
+  createdAt     DateTime       @default(now())
+}
+
+model College {
+  id            String         @id @default(cuid())
+  name          String
+  slug          String         @unique
+  location      String
+  state         String
+  city          String
+  type          String
+  stream        String[]
+  naacGrade     String
+  established   Int
+  fees          Int
+  rating        Float
+  reviewCount   Int            @default(0)
+  avgPackage    Int
+  highPackage   Int
+  topRecruiters String[]
+  about         String
+  image         String?
+  officialWebsite String?
+  sourceUrl     String?
+  dataVerifiedAt DateTime?
+  nirfRank      Int?
+  nirfScore     Float?
+  dataNote      String?
+  courses       Course[]
+  tourImages    CollegeTourImage[]
+  cutoffs       Cutoff[]
+  reviews       Review[]
+  savedBy       SavedCollege[]
+  createdAt     DateTime       @default(now())
+}
+
+model Course {
+  id        String  @id @default(cuid())
+  name      String
+  duration  String
+  seats     Int
+  fees      Int
+  college   College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  collegeId String
+}
+
+model CollegeTourImage {
+  id        String   @id @default(cuid())
+  title     String
+  category  String
+  imageUrl  String
+  sourceUrl String?
+  college   College  @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  collegeId String
+  createdAt DateTime @default(now())
+
+  @@index([collegeId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  rating    Int
+  title     String
+  body      String
+  helpful   Int      @default(0)
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  college   College  @relation(fields: [collegeId], references: [id])
+  collegeId String
+  createdAt DateTime @default(now())
+}
+
+model SavedCollege {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  college   College  @relation(fields: [collegeId], references: [id])
+  collegeId String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, collegeId])
+}
+
+model SavedComparison {
+  id         String   @id @default(cuid())
+  userId     String
+  collegeIds String[]
+  title      String
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Cutoff {
+  id        String   @id @default(cuid())
+  exam      String
+  rank      Int
+  category  String   @default("General")
+  state     String?
+  branch    String
+  year      Int      @default(2026)
+  college   College  @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  collegeId String
+  createdAt DateTime @default(now())
+
+  @@index([exam, rank])
+  @@index([category])
+  @@index([state])
+  @@index([branch])
+}
+
+model Question {
+  id          String        @id @default(cuid())
+  title       String
+  body        String
+  slug        String        @unique
+  category    String
+  views       Int           @default(0)
+  author      User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId    String
+  answers     Answer[]
+  questionTags QuestionTag[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([category])
+  @@index([createdAt])
+}
+
+model Answer {
+  id          String         @id @default(cuid())
+  body        String
+  question    Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId  String
+  author      User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId    String
+  votes       AnswerVote[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([questionId])
+  @@index([authorId])
+}
+
+model AnswerVote {
+  id        String   @id @default(cuid())
+  answer    Answer   @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  answerId  String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([answerId, userId])
+  @@index([userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  type      String
+  title     String
+  body      String
+  href      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+model Tag {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  slug         String        @unique
+  questionTags QuestionTag[]
+}
+
+model QuestionTag {
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId String
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  tagId      String
+
+  @@id([questionId, tagId])
+}

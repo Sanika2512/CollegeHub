@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="College campus placeholder">
+  <rect width="1200" height="675" fill="#e2e8f0"/>
+  <rect x="180" y="250" width="840" height="270" rx="18" fill="#ffffff"/>
+  <path d="M150 250 600 90l450 160v55H150z" fill="#1E40AF"/>
+  <rect x="260" y="315" width="95" height="205" rx="8" fill="#bfdbfe"/>
+  <rect x="430" y="315" width="95" height="205" rx="8" fill="#bfdbfe"/>
+  <rect x="600" y="315" width="95" height="205" rx="8" fill="#bfdbfe"/>
+  <rect x="770" y="315" width="95" height="205" rx="8" fill="#bfdbfe"/>
+  <rect x="120" y="520" width="960" height="55" rx="8" fill="#F59E0B"/>
+  <circle cx="600" cy="218" r="42" fill="#ffffff"/>
+  <path d="M584 218h32M600 202v32" stroke="#1E40AF" stroke-width="16" stroke-linecap="round"/>
+</svg>
