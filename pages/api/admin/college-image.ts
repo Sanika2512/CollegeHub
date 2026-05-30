@@ -1,54 +1,78 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth";
-import multer from "multer";
-import path from "path";
 import { authOptions } from "@/lib/auth";
 
 export const config = {
   api: {
-    bodyParser: false
+    bodyParser: {
+      sizeLimit: "6mb"
+    }
   }
 };
 
 type UploadRequest = NextApiRequest & {
-  file?: Express.Multer.File;
+  body: {
+    data?: string;       // base64 image data
+    filename?: string;
+  };
 };
 
-const uploadDir = path.join(process.cwd(), "public", "uploads", "colleges");
+// Upload to Cloudinary using unsigned upload preset OR signed with API key
+async function uploadToCloudinary(base64Data: string, filename: string): Promise<string> {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: uploadDir,
-    filename: (_req, file, callback) => {
-      const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
-      const safeName = path
-        .basename(file.originalname, ext)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 48);
-      callback(null, `${Date.now()}-${safeName || "college"}${ext}`);
-    }
-  }),
-  fileFilter: (_req, file, callback) => {
-    callback(null, file.mimetype.startsWith("image/"));
-  },
-  limits: {
-    fileSize: 5 * 1024 * 1024
-  }
-});
+  if (!cloudName) throw new Error("CLOUDINARY_CLOUD_NAME env variable not set");
 
-function runUpload(req: UploadRequest, res: NextApiResponse) {
-  return new Promise<void>((resolve, reject) => {
-    upload.single("imageFile")(
-      req as unknown as Parameters<ReturnType<typeof upload.single>>[0],
-      res as unknown as Parameters<ReturnType<typeof upload.single>>[1],
-      (error) => {
-      if (error) reject(error);
-      else resolve();
-      }
+  // Remove data URL prefix if present
+  const base64 = base64Data.replace(/^data:image\/\w+;base64,/, "");
+
+  // Use unsigned preset if available, else signed
+  if (uploadPreset) {
+    // Unsigned upload (simpler - just needs upload preset)
+    const formData = new FormData();
+    formData.append("file", `data:image/jpeg;base64,${base64}`);
+    formData.append("upload_preset", uploadPreset);
+    formData.append("folder", "collegehub");
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      { method: "POST", body: formData }
     );
-  });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error?.message ?? "Cloudinary upload failed");
+    return result.secure_url as string;
+  }
+
+  if (apiKey && apiSecret) {
+    // Signed upload
+    const timestamp = Math.round(Date.now() / 1000);
+    const str = `folder=collegehub&timestamp=${timestamp}${apiSecret}`;
+    const encoder = new TextEncoder();
+    const data = encoder.encode(str);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const signature = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+
+    const formData = new FormData();
+    formData.append("file", `data:image/jpeg;base64,${base64}`);
+    formData.append("api_key", apiKey);
+    formData.append("timestamp", String(timestamp));
+    formData.append("signature", signature);
+    formData.append("folder", "collegehub");
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      { method: "POST", body: formData }
+    );
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error?.message ?? "Cloudinary upload failed");
+    return result.secure_url as string;
+  }
+
+  throw new Error("Set CLOUDINARY_UPLOAD_PRESET (unsigned) or CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET in environment variables");
 }
 
 export default async function handler(req: UploadRequest, res: NextApiResponse) {
@@ -62,9 +86,11 @@ export default async function handler(req: UploadRequest, res: NextApiResponse) 
   if (session.user.role !== "ADMIN") return res.status(403).json({ error: "Admin access required" });
 
   try {
-    await runUpload(req, res);
-    if (!req.file) return res.status(422).json({ error: "Choose an image file" });
-    return res.status(201).json({ image: `/uploads/colleges/${req.file.filename}` });
+    const { data, filename = "college.jpg" } = req.body;
+    if (!data) return res.status(422).json({ error: "No image data provided" });
+
+    const imageUrl = await uploadToCloudinary(data, filename);
+    return res.status(201).json({ image: imageUrl });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Image upload failed";
     return res.status(400).json({ error: message });
