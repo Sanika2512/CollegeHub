@@ -31,7 +31,7 @@ const upload = multer({
     callback(null, file.mimetype.startsWith("image/"));
   },
   limits: {
-    fileSize: 5 * 1024 * 1024
+    fileSize: 15 * 1024 * 1024
   }
 });
 
@@ -77,7 +77,12 @@ export default async function handler(req: UploadRequest, res: NextApiResponse) 
     const imageUrl = await uploadBufferToCloudinary(req.file.buffer);
     return res.status(201).json({ image: imageUrl });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Image upload failed";
+    const message =
+      error instanceof Error
+        ? error.message.includes("File too large")
+          ? "Image is too large. Please use an image under 15MB."
+          : error.message
+        : "Image upload failed";
     return res.status(400).json({ error: message });
   }
 }
