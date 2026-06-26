@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getServerSession } from "next-auth";
 import multer from "multer";
-import path from "path";
+import { v2 as cloudinary } from "cloudinary";
 import { authOptions } from "@/lib/auth";
 
 export const config = {
@@ -14,22 +14,19 @@ type UploadRequest = NextApiRequest & {
   file?: Express.Multer.File;
 };
 
-const uploadDir = path.join(process.cwd(), "public", "uploads", "colleges");
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
+// IMPORTANT: memoryStorage, NOT diskStorage.
+// Render's filesystem is ephemeral — anything written to disk at runtime
+// disappears on the next restart/redeploy/sleep-wake cycle, which is why
+// uploaded images were reverting to the placeholder. We keep the file in
+// memory only long enough to forward it to Cloudinary, which persists it.
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: uploadDir,
-    filename: (_req, file, callback) => {
-      const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
-      const safeName = path
-        .basename(file.originalname, ext)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 48);
-      callback(null, `${Date.now()}-${safeName || "college"}${ext}`);
-    }
-  }),
+  storage: multer.memoryStorage(),
   fileFilter: (_req, file, callback) => {
     callback(null, file.mimetype.startsWith("image/"));
   },
@@ -38,14 +35,27 @@ const upload = multer({
   }
 });
 
+function uploadBufferToCloudinary(buffer: Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "collegehub/colleges" },
+      (error, result) => {
+        if (error || !result) return reject(error ?? new Error("Cloudinary upload failed"));
+        resolve(result.secure_url);
+      }
+    );
+    stream.end(buffer);
+  });
+}
+
 function runUpload(req: UploadRequest, res: NextApiResponse) {
   return new Promise<void>((resolve, reject) => {
     upload.single("imageFile")(
       req as unknown as Parameters<ReturnType<typeof upload.single>>[0],
       res as unknown as Parameters<ReturnType<typeof upload.single>>[1],
       (error) => {
-      if (error) reject(error);
-      else resolve();
+        if (error) reject(error);
+        else resolve();
       }
     );
   });
@@ -64,7 +74,8 @@ export default async function handler(req: UploadRequest, res: NextApiResponse) 
   try {
     await runUpload(req, res);
     if (!req.file) return res.status(422).json({ error: "Choose an image file" });
-    return res.status(201).json({ image: `/uploads/colleges/${req.file.filename}` });
+    const imageUrl = await uploadBufferToCloudinary(req.file.buffer);
+    return res.status(201).json({ image: imageUrl });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Image upload failed";
     return res.status(400).json({ error: message });
