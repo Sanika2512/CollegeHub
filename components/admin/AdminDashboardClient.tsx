@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/Input";
 import { SafeImage } from "@/components/ui/SafeImage";
 import { normalizeImageSrc, normalizeStoredImagePath } from "@/lib/image-utils";
 import { formatFees, formatPackage } from "@/lib/utils";
+import { useCountUp, useChangedKeys } from "@/hooks/useAnimationHooks";
+import "@/styles/admin-motion.css";
 
 type Overview = {
   generatedAt: string;
@@ -143,6 +145,7 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
   const [form, setForm] = useState<CollegeForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshSpinning, setRefreshSpinning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profilePreviewSrc, setProfilePreviewSrc] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -163,14 +166,24 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
     setColleges(data.items);
   }, []);
 
+  // Manual refresh gets its own spin flag, decoupled from `loading`,
+  // so the icon spins for a perceptible minimum beat instead of a
+  // flash that's invisible on fast connections.
   const loadAll = useCallback(async (showToast = false) => {
     setLoading(true);
+    if (showToast) setRefreshSpinning(true);
+    const spinStartedAt = performance.now();
     try {
       await Promise.all([loadOverview(showToast), loadColleges(query)]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Admin dashboard failed to load");
     } finally {
       setLoading(false);
+      if (showToast) {
+        const elapsed = performance.now() - spinStartedAt;
+        const remaining = Math.max(450 - elapsed, 0);
+        window.setTimeout(() => setRefreshSpinning(false), remaining);
+      }
     }
   }, [loadColleges, loadOverview, query]);
 
@@ -204,6 +217,13 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
       { label: "Comparisons", value: overview?.stats.comparisons ?? 0, icon: BarChart3 }
     ],
     [overview]
+  );
+
+  // Rows whose visible fields changed since the last poll get a brief
+  // background flash instead of a silent, invisible update.
+  const changedCollegeIds = useChangedKeys(
+    colleges,
+    useCallback((c: College) => `${c.fees}|${c.rating}|${c.avgPackage}|${c.highPackage}|${c.name}`, [])
   );
 
   function setField(field: keyof CollegeForm, value: string) {
@@ -438,24 +458,15 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
           <p className="mt-2 max-w-2xl text-slate-600">Signed in as {adminName}. Live counts refresh every 5 seconds from the database.</p>
         </div>
         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => loadAll(true)} disabled={loading}>
-          <RefreshCw className="h-4 w-4" />
+          <RefreshCw className={`h-4 w-4 ${refreshSpinning ? "admin-spin-active" : ""}`} />
           Refresh
         </Button>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        {statCards.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Card key={item.label} className="p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-slate-600">{item.label}</p>
-                <Icon className="h-5 w-5 text-primary" />
-              </div>
-              <p className="mt-3 font-display text-3xl font-black">{item.value.toLocaleString("en-IN")}</p>
-            </Card>
-          );
-        })}
+        {statCards.map((item, index) => (
+          <StatCard key={item.label} label={item.label} value={item.value} icon={item.icon} index={index} />
+        ))}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -479,7 +490,7 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
                       type="button"
                       onClick={() => setQuery("")}
                       aria-label="Clear search"
-                      className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -492,8 +503,12 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
             </p>
           </div>
           <div className="grid gap-3 p-4 md:hidden">
-            {colleges.map((college) => (
-              <div key={college.id} className="rounded-lg border bg-white p-3">
+            {colleges.map((college, index) => (
+              <div
+                key={college.id}
+                className={`admin-rise-in rounded-lg border bg-white p-3 ${changedCollegeIds.has(college.id) ? "admin-row-flash" : ""}`}
+                style={{ "--i": index } as React.CSSProperties}
+              >
                 <div className="flex gap-3">
                   <SafeImage
                     src={college.image}
@@ -507,11 +522,11 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Button type="button" variant="outline" className="h-10 px-3" onClick={() => showUpdateCollegeForm(college)}>
+                  <Button type="button" variant="outline" className="admin-icon-btn h-10 px-3" onClick={() => showUpdateCollegeForm(college)}>
                     <Pencil className="h-4 w-4" />
                     Edit
                   </Button>
-                  <Button type="button" variant="danger" className="h-10 px-3" onClick={() => deleteCollege(college)}>
+                  <Button type="button" variant="danger" className="admin-icon-btn h-10 px-3" onClick={() => deleteCollege(college)}>
                     <Trash2 className="h-4 w-4" />
                     Delete
                   </Button>
@@ -538,8 +553,12 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {colleges.map((college) => (
-                  <tr key={college.id}>
+                {colleges.map((college, index) => (
+                  <tr
+                    key={college.id}
+                    className={`admin-rise-in admin-card-hover ${changedCollegeIds.has(college.id) ? "admin-row-flash" : ""}`}
+                    style={{ "--i": index } as React.CSSProperties}
+                  >
                     <td className="px-5 py-4">
                       <SafeImage
                         src={college.image}
@@ -557,10 +576,10 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
                     <td className="px-5 py-4">{college.rating.toFixed(1)}</td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" className="h-9 px-3" onClick={() => showUpdateCollegeForm(college)} title={`Update ${college.name}`}>
+                        <Button type="button" variant="outline" className="admin-icon-btn h-9 px-3" onClick={() => showUpdateCollegeForm(college)} title={`Update ${college.name}`}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button type="button" variant="danger" className="h-9 px-3" onClick={() => deleteCollege(college)}>
+                        <Button type="button" variant="danger" className="admin-icon-btn h-9 px-3" onClick={() => deleteCollege(college)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -580,7 +599,7 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
         </Card>
 
         <Card ref={formCardRef} className="p-4 sm:p-5 xl:sticky xl:top-24 xl:self-start">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div key={editingId ?? "add"} className="admin-panel-switch flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase text-primary">{editingId ? "Update mode" : "Add mode"}</p>
               <h2 className="font-display text-xl font-black sm:text-2xl">{editingId ? "Update selected college" : "Add new college"}</h2>
@@ -589,7 +608,7 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
               </p>
             </div>
             {editingId ? (
-              <Button type="button" variant="outline" className="shrink-0" onClick={showAddCollegeForm}>
+              <Button type="button" variant="outline" className="admin-icon-btn shrink-0" onClick={showAddCollegeForm}>
                 <Plus className="h-4 w-4" />
                 New
               </Button>
@@ -622,7 +641,7 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
               <p className="text-xs text-slate-500">Upload a unique image for this college or paste an image URL. Empty means the frontend uses fallback only while rendering.</p>
               <div className="mt-3 grid gap-3">
                 {profilePreviewSrc || form.image ? (
-                  <SafeImage src={profilePreviewSrc || form.image} alt={`${form.name || "College"} profile preview`} className="h-36 w-full rounded-md border bg-white object-cover" />
+                  <SafeImage src={profilePreviewSrc || form.image} alt={`${form.name || "College"} profile preview`} className="admin-block-enter h-36 w-full rounded-md border bg-white object-cover" />
                 ) : null}
                 <Input value={form.image} onChange={(event) => setProfileImageField(event.target.value)} placeholder="https://... or /uploads/colleges/photo.jpg" />
                 <Input ref={fileInputRef} type="file" accept="image/*" onChange={handleProfileFileChange} />
@@ -641,16 +660,16 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
                   <h3 className="font-semibold">Courses</h3>
                   <p className="text-xs text-slate-500">Course name, duration, total seats, and annual fees appear in the Courses tab.</p>
                 </div>
-                <Button type="button" variant="outline" className="h-10 px-3" onClick={addCourse}>
+                <Button type="button" variant="outline" className="admin-icon-btn h-10 px-3" onClick={addCourse}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
               <div className="mt-3 space-y-3">
                 {form.courses.map((course, index) => (
-                  <div key={index} className="rounded-md border bg-white p-3">
+                  <div key={index} className="admin-block-enter rounded-md border bg-white p-3">
                     <div className="mb-2 flex items-center justify-between">
                       <p className="text-sm font-semibold">Course {index + 1}</p>
-                      <button type="button" className="text-sm font-semibold text-red-600" onClick={() => removeCourse(index)}>Remove</button>
+                      <button type="button" className="text-sm font-semibold text-red-600 transition hover:text-red-700" onClick={() => removeCourse(index)}>Remove</button>
                     </div>
                     <div className="grid gap-2">
                       <Input value={course.name} onChange={(event) => setCourseField(index, "name", event.target.value)} placeholder="B.Tech Computer Science" required />
@@ -671,11 +690,11 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
                   <p className="text-xs text-slate-500">Upload campus photos from this machine or paste public URLs for the Virtual Tour tab.</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <Button type="button" variant="outline" className="h-10 px-3" onClick={autoFillTourImages}>
+                  <Button type="button" variant="outline" className="admin-icon-btn h-10 px-3" onClick={autoFillTourImages}>
                     <ImagePlus className="h-4 w-4" />
                     Auto-fill
                   </Button>
-                  <Button type="button" variant="outline" className="h-10 px-3" onClick={addTourImage}>
+                  <Button type="button" variant="outline" className="admin-icon-btn h-10 px-3" onClick={addTourImage}>
                     <Plus className="h-4 w-4" />
                     Add
                   </Button>
@@ -683,10 +702,10 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
               </div>
               <div className="mt-3 space-y-3">
                 {form.tourImages.map((tourImage, index) => (
-                  <div key={index} className="rounded-md border bg-white p-3">
+                  <div key={index} className="admin-block-enter rounded-md border bg-white p-3">
                     <div className="mb-2 flex items-center justify-between">
                       <p className="text-sm font-semibold">Tour image {index + 1}</p>
-                      <button type="button" className="text-sm font-semibold text-red-600" onClick={() => removeTourImage(index)}>Remove</button>
+                      <button type="button" className="text-sm font-semibold text-red-600 transition hover:text-red-700" onClick={() => removeTourImage(index)}>Remove</button>
                     </div>
                     <div className="grid gap-2">
                       <div className="grid gap-2 sm:grid-cols-2">
@@ -694,11 +713,11 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
                         <Input value={tourImage.category} onChange={(event) => setTourImageField(index, "category", event.target.value)} placeholder="Library" />
                       </div>
                       {tourImage.imageUrl ? (
-                        <SafeImage src={normalizeImageSrc(tourImage.imageUrl)} alt={tourImage.title || `Tour image ${index + 1}`} className="h-32 w-full rounded-md border object-cover" />
+                        <SafeImage src={normalizeImageSrc(tourImage.imageUrl)} alt={tourImage.title || `Tour image ${index + 1}`} className="admin-block-enter h-32 w-full rounded-md border object-cover" />
                       ) : null}
                       <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                         <Input value={tourImage.imageUrl} onChange={(event) => setTourImageField(index, "imageUrl", event.target.value)} placeholder="https://... or /uploads/colleges/photo.jpg" />
-                        <label className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border bg-white px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
+                        <label className="admin-icon-btn inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border bg-white px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
                           <ImagePlus className="h-4 w-4" />
                           Upload
                           <input type="file" accept="image/*" className="sr-only" onChange={(event) => uploadTourImage(index, event)} />
@@ -712,7 +731,7 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button type="submit" disabled={saving} className="flex-1">
+              <Button type="submit" disabled={saving} className="flex-1 transition active:scale-[0.98]">
                 <Save className="h-4 w-4" />
                 {saving ? "Saving..." : editingId ? "Update college" : "Create college"}
               </Button>
@@ -739,6 +758,29 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
   );
 }
 
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  index
+}: {
+  label: string;
+  value: number;
+  icon: typeof Building2;
+  index: number;
+}) {
+  const animatedValue = useCountUp(value);
+  return (
+    <Card className="admin-rise-in admin-card-hover p-4" style={{ "--i": index } as React.CSSProperties}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-slate-600">{label}</p>
+        <Icon className="h-5 w-5 text-primary" />
+      </div>
+      <p className="mt-3 font-display text-3xl font-black tabular-nums">{animatedValue.toLocaleString("en-IN")}</p>
+    </Card>
+  );
+}
+
 function ActivityList({
   title,
   items,
@@ -752,8 +794,12 @@ function ActivityList({
     <Card className="p-5">
       <h2 className="font-display text-xl font-black">{title}</h2>
       <div className="mt-4 space-y-3">
-        {items.map((item) => (
-          <div key={item.id} className="flex items-center gap-3 rounded-md border p-3">
+        {items.map((item, index) => (
+          <div
+            key={item.id}
+            className="admin-rise-in admin-card-hover flex items-center gap-3 rounded-md border p-3"
+            style={{ "--i": index } as React.CSSProperties}
+          >
             {item.image !== undefined ? (
               <SafeImage src={item.image} alt={item.title} className="h-12 w-16 rounded-md object-cover" />
             ) : null}
@@ -765,7 +811,7 @@ function ActivityList({
               <Button
                 type="button"
                 variant="danger"
-                className="h-9 px-3"
+                className="admin-icon-btn h-9 px-3"
                 disabled={item.isAdmin}
                 onClick={() => onDelete(item)}
               >
