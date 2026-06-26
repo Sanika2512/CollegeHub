@@ -1,5 +1,8 @@
 # CollegeHub - College Discovery Platform MVP
 
+## Live Demo
+https://collegehub-vlzc.onrender.com/
+
 Production-grade MVP for discovering, saving, reviewing, and comparing Indian colleges.
 
 ## Stack
@@ -32,13 +35,7 @@ cp .env.example .env
 - `DATABASE_URL`: PostgreSQL connection string.
 - `NEXTAUTH_URL`: Usually `http://localhost:3000` locally.
 - `NEXTAUTH_SECRET`: Long random secret for JWT/session signing.
-- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: Google OAuth credentials. Leave blank if only credentials auth is needed locally.
-
-Local development connection used in this workspace:
-
-```env
-DATABASE_URL="postgresql://postgres:sanu%40123@localhost:5432/college_platform"
-```
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: Google OAuth credentials. Leave blank if only credentials auth is needed locally
 
 4. Create and seed the database:
 
