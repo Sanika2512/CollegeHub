@@ -100,7 +100,7 @@ export function Footer() {
 
         <div className="mt-10 flex flex-col items-center gap-2 border-t pt-6 text-sm text-slate-500 sm:flex-row sm:justify-between">
           <p>© {year} CollegeHub. All rights reserved.</p>
-          <p className="text-slate-400">Built with Next.js, Tailwind CSS &amp; Prisma.</p>
+          <p className="text-slate-400">❤️ Made With Care For Future Students</p>
         </div>
       </div>
     </footer>
