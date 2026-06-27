@@ -507,6 +507,7 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
+                  
                   <Button type="button" variant="outline" className="h-10 px-3" onClick={() => showUpdateCollegeForm(college)}>
                     <Pencil className="h-4 w-4" />
                     Edit
@@ -515,6 +516,7 @@ export function AdminDashboardClient({ adminName, adminUserId }: { adminName: st
                     <Trash2 className="h-4 w-4" />
                     Delete
                   </Button>
+                  
                 </div>
               </div>
             ))}
